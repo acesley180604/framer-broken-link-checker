@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useState, useCallback } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import { useScanStore } from "./store/scanStore"
-import ScanConfig from "./components/ScanConfig"
-import ScanProgress from "./components/ScanProgress"
+import { ScanConfig } from "./components/ScanConfig"
+import { ScanProgress } from "./components/ScanProgress"
 import ResultsList from "./components/ResultsList"
 import LinkDetail from "./components/LinkDetail"
 import Dashboard from "./components/Dashboard"
@@ -21,18 +22,29 @@ const TABS: { id: Tab; label: string }[] = [
     { id: "export", label: "Export" },
 ]
 
-export default function App() {
+export function App() {
     const [activeTab, setActiveTab] = useState<Tab>("scan")
     const { currentScan, progress, toast, dismissToast, selectedLinkId } = useScanStore()
 
     const brokenCount = currentScan?.broken ?? 0
 
+    const handleTabChange = useCallback((tab: Tab) => {
+        setActiveTab(tab)
+    }, [])
+
     return (
         <section>
-            <header className="row-between" style={{ padding: "12px 15px", borderBottom: "1px solid var(--framer-color-divider)" }}>
+            <header
+                className="row-between"
+                style={{ padding: "12px 15px", borderBottom: "1px solid var(--framer-color-divider)" }}
+            >
                 <div className="row gap-8">
                     <h1>Broken Link Checker</h1>
-                    {progress.scanning && <span className="saving-indicator">Scanning...</span>}
+                    {progress.scanning && (
+                        <span className="saving-indicator">
+                            {progress.paused ? "Paused" : "Scanning..."}
+                        </span>
+                    )}
                 </div>
                 {currentScan && (
                     <div className="row gap-6">
@@ -40,7 +52,12 @@ export default function App() {
                             style={{
                                 fontSize: 11,
                                 fontWeight: 600,
-                                color: currentScan.healthScore >= 90 ? "#38a169" : currentScan.healthScore >= 70 ? "#d69e2e" : "#e53e3e",
+                                color:
+                                    currentScan.healthScore >= 90
+                                        ? "#38a169"
+                                        : currentScan.healthScore >= 70
+                                          ? "#d69e2e"
+                                          : "#e53e3e",
                             }}
                         >
                             {currentScan.healthScore}%
@@ -56,7 +73,7 @@ export default function App() {
                 {TABS.map((tab) => (
                     <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => handleTabChange(tab.id)}
                         className={activeTab === tab.id ? "active" : ""}
                     >
                         {tab.label}
@@ -65,17 +82,27 @@ export default function App() {
             </nav>
 
             <main>
-                {activeTab === "scan" && (
-                    <div className="stack-lg">
-                        <ScanConfig />
-                        <ScanProgress />
-                    </div>
-                )}
-                {activeTab === "results" && <ResultsList />}
-                {activeTab === "dashboard" && <Dashboard />}
-                {activeTab === "history" && <ScanHistory />}
-                {activeTab === "schedule" && <ScheduleConfig />}
-                {activeTab === "export" && <ExportPanel />}
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={activeTab}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                    >
+                        {activeTab === "scan" && (
+                            <div className="stack-lg">
+                                <ScanConfig />
+                                <ScanProgress />
+                            </div>
+                        )}
+                        {activeTab === "results" && <ResultsList />}
+                        {activeTab === "dashboard" && <Dashboard />}
+                        {activeTab === "history" && <ScanHistory />}
+                        {activeTab === "schedule" && <ScheduleConfig />}
+                        {activeTab === "export" && <ExportPanel />}
+                    </motion.div>
+                </AnimatePresence>
             </main>
 
             {selectedLinkId && <LinkDetail />}

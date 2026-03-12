@@ -1,5 +1,7 @@
 import { create } from "zustand"
-import { DEFAULT_SCAN_CONFIG, DEFAULT_SCHEDULE_CONFIG } from "@/utils/defaults"
+import { DEFAULT_SCAN_CONFIG, DEFAULT_SCHEDULE_CONFIG, MAX_HISTORY_ITEMS } from "@/utils/defaults"
+import type { LinkStatus } from "@/utils/statusCodes"
+import type { LinkElementType } from "@/utils/htmlParser"
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -8,14 +10,18 @@ export interface LinkResult {
     sourceUrl: string
     targetUrl: string
     statusCode: number | null
-    status: "ok" | "broken" | "redirect" | "timeout" | "error"
+    status: LinkStatus
     redirectTo?: string
     responseTime: number
     linkText: string
     linkType: "internal" | "external"
-    element: "a" | "img" | "script" | "link" | "iframe"
+    element: LinkElementType
+    context: string
     checkedAt: string
     ignored: boolean
+    softErrorReason?: string
+    sslStatus?: string
+    replacementUrl?: string
 }
 
 export interface ScanResult {
@@ -44,6 +50,10 @@ export interface ScanConfig {
     respectRobotsTxt: boolean
     userAgent: string
     concurrency: number
+    proxyUrl: string
+    checkSsl: boolean
+    detectSoftErrors: boolean
+    safeBrowsingApiKey: string
 }
 
 export interface ScheduleConfig {
@@ -57,19 +67,25 @@ export interface ScheduleConfig {
 
 export interface ScanProgress {
     scanning: boolean
+    paused: boolean
     currentPage: string
     pagesScanned: number
     totalPages: number
     linksChecked: number
     estimatedTotalLinks: number
-    phase: "crawling" | "checking" | "complete" | "idle" | "error"
+    phase: "crawling" | "checking" | "complete" | "idle" | "error" | "paused"
+    liveResults: LinkResult[]
+    okCount: number
+    brokenCount: number
+    redirectCount: number
+    errorCount: number
 }
 
 // ── Filter types ────────────────────────────────────────────────────────────
 
-export type StatusFilter = "all" | "ok" | "broken" | "redirect" | "timeout" | "error"
+export type StatusFilter = "all" | "ok" | "broken" | "redirect" | "timeout" | "error" | "soft404" | "ssl-error" | "mixed-content"
 export type TypeFilter = "all" | "internal" | "external"
-export type ElementFilter = "all" | "a" | "img" | "script" | "link" | "iframe"
+export type ElementFilter = "all" | LinkElementType
 
 // ── Store types ─────────────────────────────────────────────────────────────
 
@@ -103,12 +119,15 @@ interface ScanState {
     setScanConfig: (updates: Partial<ScanConfig>) => void
     setScheduleConfig: (updates: Partial<ScheduleConfig>) => void
     setProgress: (updates: Partial<ScanProgress>) => void
+    addLiveResult: (link: LinkResult) => void
+    clearLiveResults: () => void
     setCurrentScan: (scan: ScanResult | null) => void
     addToHistory: (scan: ScanResult) => void
     clearHistory: () => void
     selectLink: (id: string | null) => void
     toggleIgnoreLink: (id: string) => void
     ignoreAllBroken: () => void
+    setReplacementUrl: (linkId: string, url: string) => void
 
     // Filters
     setStatusFilter: (filter: StatusFilter) => void
@@ -128,6 +147,7 @@ interface ScanState {
 
 const STORAGE_KEY = "blc_scan_history"
 const SCHEDULE_KEY = "blc_schedule"
+const CONFIG_KEY = "blc_config"
 
 function loadHistory(): ScanResult[] {
     try {
@@ -140,8 +160,7 @@ function loadHistory(): ScanResult[] {
 
 function saveHistory(history: ScanResult[]): void {
     try {
-        // Keep only last 20 scans to avoid storage bloat
-        const trimmed = history.slice(0, 20)
+        const trimmed = history.slice(0, MAX_HISTORY_ITEMS)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
     } catch {
         // localStorage full or unavailable
@@ -151,7 +170,7 @@ function saveHistory(history: ScanResult[]): void {
 function loadSchedule(): ScheduleConfig {
     try {
         const raw = localStorage.getItem(SCHEDULE_KEY)
-        return raw ? JSON.parse(raw) : DEFAULT_SCHEDULE_CONFIG
+        return raw ? { ...DEFAULT_SCHEDULE_CONFIG, ...JSON.parse(raw) } : DEFAULT_SCHEDULE_CONFIG
     } catch {
         return DEFAULT_SCHEDULE_CONFIG
     }
@@ -165,21 +184,46 @@ function saveSchedule(config: ScheduleConfig): void {
     }
 }
 
+function loadConfig(): Partial<ScanConfig> {
+    try {
+        const raw = localStorage.getItem(CONFIG_KEY)
+        return raw ? JSON.parse(raw) : {}
+    } catch {
+        return {}
+    }
+}
+
+function saveConfig(config: ScanConfig): void {
+    try {
+        localStorage.setItem(CONFIG_KEY, JSON.stringify(config))
+    } catch {
+        // localStorage unavailable
+    }
+}
+
+const defaultProgress: ScanProgress = {
+    scanning: false,
+    paused: false,
+    currentPage: "",
+    pagesScanned: 0,
+    totalPages: 0,
+    linksChecked: 0,
+    estimatedTotalLinks: 0,
+    phase: "idle",
+    liveResults: [],
+    okCount: 0,
+    brokenCount: 0,
+    redirectCount: 0,
+    errorCount: 0,
+}
+
 export const useScanStore = create<ScanState>((set, get) => ({
     // Data
-    scanConfig: { ...DEFAULT_SCAN_CONFIG },
+    scanConfig: { ...DEFAULT_SCAN_CONFIG, ...loadConfig() },
     scheduleConfig: loadSchedule(),
     currentScan: null,
     scanHistory: loadHistory(),
-    progress: {
-        scanning: false,
-        currentPage: "",
-        pagesScanned: 0,
-        totalPages: 0,
-        linksChecked: 0,
-        estimatedTotalLinks: 0,
-        phase: "idle",
-    },
+    progress: { ...defaultProgress },
     selectedLinkId: null,
 
     // Filters
@@ -229,8 +273,8 @@ export const useScanStore = create<ScanState>((set, get) => ({
 
     statusCounts: () => {
         const { currentScan } = get()
-        if (!currentScan) return { ok: 0, broken: 0, redirect: 0, timeout: 0, error: 0 }
-        const counts: Record<string, number> = { ok: 0, broken: 0, redirect: 0, timeout: 0, error: 0 }
+        if (!currentScan) return { ok: 0, broken: 0, redirect: 0, timeout: 0, error: 0, soft404: 0, "ssl-error": 0, "mixed-content": 0 }
+        const counts: Record<string, number> = { ok: 0, broken: 0, redirect: 0, timeout: 0, error: 0, soft404: 0, "ssl-error": 0, "mixed-content": 0 }
         for (const link of currentScan.links) {
             counts[link.status] = (counts[link.status] ?? 0) + 1
         }
@@ -239,7 +283,11 @@ export const useScanStore = create<ScanState>((set, get) => ({
 
     // Actions
     setScanConfig: (updates) => {
-        set((state) => ({ scanConfig: { ...state.scanConfig, ...updates } }))
+        set((state) => {
+            const newConfig = { ...state.scanConfig, ...updates }
+            saveConfig(newConfig)
+            return { scanConfig: newConfig }
+        })
     },
 
     setScheduleConfig: (updates) => {
@@ -252,6 +300,39 @@ export const useScanStore = create<ScanState>((set, get) => ({
 
     setProgress: (updates) => {
         set((state) => ({ progress: { ...state.progress, ...updates } }))
+    },
+
+    addLiveResult: (link) => {
+        set((state) => {
+            const liveResults = [...state.progress.liveResults, link]
+            const okCount = state.progress.okCount + (link.status === "ok" ? 1 : 0)
+            const brokenCount = state.progress.brokenCount + (link.status === "broken" || link.status === "soft404" ? 1 : 0)
+            const redirectCount = state.progress.redirectCount + (link.status === "redirect" ? 1 : 0)
+            const errorCount = state.progress.errorCount + (link.status === "error" || link.status === "timeout" || link.status === "ssl-error" || link.status === "mixed-content" ? 1 : 0)
+            return {
+                progress: {
+                    ...state.progress,
+                    liveResults,
+                    okCount,
+                    brokenCount,
+                    redirectCount,
+                    errorCount,
+                },
+            }
+        })
+    },
+
+    clearLiveResults: () => {
+        set((state) => ({
+            progress: {
+                ...state.progress,
+                liveResults: [],
+                okCount: 0,
+                brokenCount: 0,
+                redirectCount: 0,
+                errorCount: 0,
+            },
+        }))
     },
 
     setCurrentScan: (scan) => {
@@ -279,7 +360,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
         set((state) => {
             if (!state.currentScan) return state
             const updatedLinks = state.currentScan.links.map((l) =>
-                l.id === id ? { ...l, ignored: !l.ignored } : l
+                l.id === id ? { ...l, ignored: !l.ignored } : l,
             )
             return {
                 currentScan: { ...state.currentScan, links: updatedLinks },
@@ -291,7 +372,19 @@ export const useScanStore = create<ScanState>((set, get) => ({
         set((state) => {
             if (!state.currentScan) return state
             const updatedLinks = state.currentScan.links.map((l) =>
-                l.status === "broken" ? { ...l, ignored: true } : l
+                l.status === "broken" || l.status === "soft404" ? { ...l, ignored: true } : l,
+            )
+            return {
+                currentScan: { ...state.currentScan, links: updatedLinks },
+            }
+        })
+    },
+
+    setReplacementUrl: (linkId, url) => {
+        set((state) => {
+            if (!state.currentScan) return state
+            const updatedLinks = state.currentScan.links.map((l) =>
+                l.id === linkId ? { ...l, replacementUrl: url } : l,
             )
             return {
                 currentScan: { ...state.currentScan, links: updatedLinks },

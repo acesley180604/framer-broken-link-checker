@@ -1,7 +1,55 @@
-import { useScanStore } from "@/store/scanStore"
+import { useMemo, memo, useCallback } from "react"
+import { motion, AnimatePresence } from "motion/react"
+import { useScanStore, type LinkResult } from "@/store/scanStore"
 import { getStatusColor, getStatusLabel } from "@/utils/statusCodes"
 
-export default function ResultsList() {
+const LinkRow = memo(function LinkRow({
+    link,
+    onSelect,
+}: {
+    link: LinkResult
+    onSelect: (id: string) => void
+}) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+            className={`link-row ${link.ignored ? "ignored" : ""}`}
+            onClick={() => onSelect(link.id)}
+        >
+            <div className="row-between">
+                <div className="link-row-url">{link.targetUrl}</div>
+                <span className={`badge badge-${link.status === "soft404" ? "broken" : link.status}`} style={{ flexShrink: 0 }}>
+                    {link.statusCode ?? link.status}
+                </span>
+            </div>
+            <div className="link-row-meta">
+                <span style={{ fontSize: 10, color: getStatusColor(link.status), fontWeight: 600 }}>
+                    {getStatusLabel(link.status)}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--framer-color-text-tertiary)" }}>
+                    {link.linkType}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--framer-color-text-tertiary)" }}>
+                    {link.element}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--framer-color-text-tertiary)" }}>
+                    {link.responseTime}ms
+                </span>
+                {link.softErrorReason && (
+                    <span style={{ fontSize: 10, color: "#e53e3e" }}>soft 404</span>
+                )}
+                {link.sslStatus && (
+                    <span style={{ fontSize: 10, color: "#dd6b20" }}>SSL</span>
+                )}
+            </div>
+            <div className="link-row-source">from: {link.sourceUrl}</div>
+        </motion.div>
+    )
+})
+
+export function ResultsList() {
     const {
         currentScan,
         filteredLinks,
@@ -19,6 +67,15 @@ export default function ResultsList() {
         statusCounts,
     } = useScanStore()
 
+    const handleSelectLink = useCallback(
+        (id: string) => selectLink(id),
+        [selectLink],
+    )
+
+    const links = useMemo(() => filteredLinks(), [filteredLinks])
+    const counts = useMemo(() => statusCounts(), [statusCounts])
+    const pages = useMemo(() => uniquePages(), [uniquePages])
+
     if (!currentScan) {
         return (
             <div className="empty-state">
@@ -30,9 +87,7 @@ export default function ResultsList() {
         )
     }
 
-    const links = filteredLinks()
-    const counts = statusCounts()
-    const pages = uniquePages()
+    const allStatuses = ["all", "ok", "broken", "soft404", "redirect", "timeout", "error", "ssl-error", "mixed-content"] as const
 
     return (
         <div className="stack-lg">
@@ -41,46 +96,31 @@ export default function ResultsList() {
                 {counts.ok > 0 && (
                     <div
                         className="status-bar-segment"
-                        style={{
-                            width: `${(counts.ok / currentScan.linksChecked) * 100}%`,
-                            background: "#38a169",
-                        }}
+                        style={{ width: `${(counts.ok / currentScan.linksChecked) * 100}%`, background: "#38a169" }}
                     />
                 )}
                 {counts.redirect > 0 && (
                     <div
                         className="status-bar-segment"
-                        style={{
-                            width: `${(counts.redirect / currentScan.linksChecked) * 100}%`,
-                            background: "#d69e2e",
-                        }}
+                        style={{ width: `${(counts.redirect / currentScan.linksChecked) * 100}%`, background: "#d69e2e" }}
                     />
                 )}
-                {counts.broken > 0 && (
+                {(counts.broken + (counts.soft404 ?? 0)) > 0 && (
                     <div
                         className="status-bar-segment"
-                        style={{
-                            width: `${(counts.broken / currentScan.linksChecked) * 100}%`,
-                            background: "#e53e3e",
-                        }}
+                        style={{ width: `${((counts.broken + (counts.soft404 ?? 0)) / currentScan.linksChecked) * 100}%`, background: "#e53e3e" }}
                     />
                 )}
-                {counts.timeout > 0 && (
+                {((counts["ssl-error"] ?? 0) + (counts["mixed-content"] ?? 0)) > 0 && (
                     <div
                         className="status-bar-segment"
-                        style={{
-                            width: `${(counts.timeout / currentScan.linksChecked) * 100}%`,
-                            background: "#dd6b20",
-                        }}
+                        style={{ width: `${(((counts["ssl-error"] ?? 0) + (counts["mixed-content"] ?? 0)) / currentScan.linksChecked) * 100}%`, background: "#dd6b20" }}
                     />
                 )}
-                {counts.error > 0 && (
+                {(counts.timeout + counts.error) > 0 && (
                     <div
                         className="status-bar-segment"
-                        style={{
-                            width: `${(counts.error / currentScan.linksChecked) * 100}%`,
-                            background: "#805ad5",
-                        }}
+                        style={{ width: `${((counts.timeout + counts.error) / currentScan.linksChecked) * 100}%`, background: "#805ad5" }}
                     />
                 )}
             </div>
@@ -89,15 +129,19 @@ export default function ResultsList() {
             <div className="stack-sm">
                 {/* Status filter */}
                 <div className="segment-group" style={{ flexWrap: "wrap" }}>
-                    {(["all", "ok", "broken", "redirect", "timeout", "error"] as const).map((s) => (
-                        <button
-                            key={s}
-                            className={`segment-btn ${statusFilter === s ? "active" : ""}`}
-                            onClick={() => setStatusFilter(s)}
-                        >
-                            {s === "all" ? `All (${currentScan.linksChecked})` : `${getStatusLabel(s)} (${counts[s] ?? 0})`}
-                        </button>
-                    ))}
+                    {allStatuses.map((s) => {
+                        const count = s === "all" ? currentScan.linksChecked : (counts[s] ?? 0)
+                        if (s !== "all" && count === 0) return null
+                        return (
+                            <button
+                                key={s}
+                                className={`segment-btn ${statusFilter === s ? "active" : ""}`}
+                                onClick={() => setStatusFilter(s)}
+                            >
+                                {s === "all" ? `All (${count})` : `${getStatusLabel(s)} (${count})`}
+                            </button>
+                        )
+                    })}
                 </div>
 
                 {/* Type and page filters */}
@@ -154,41 +198,12 @@ export default function ResultsList() {
                     <p>No links match your filters.</p>
                 </div>
             ) : (
-                <div className="stack-sm" style={{ maxHeight: 300, overflowY: "auto" }}>
-                    {links.slice(0, 100).map((link) => (
-                        <div
-                            key={link.id}
-                            className={`link-row ${link.ignored ? "ignored" : ""}`}
-                            onClick={() => selectLink(link.id)}
-                        >
-                            <div className="row-between">
-                                <div className="link-row-url">{link.targetUrl}</div>
-                                <span
-                                    className={`badge badge-${link.status}`}
-                                    style={{ flexShrink: 0 }}
-                                >
-                                    {link.statusCode ?? link.status}
-                                </span>
-                            </div>
-                            <div className="link-row-meta">
-                                <span style={{ fontSize: 10, color: getStatusColor(link.status), fontWeight: 600 }}>
-                                    {getStatusLabel(link.status)}
-                                </span>
-                                <span style={{ fontSize: 10, color: "var(--framer-color-text-tertiary)" }}>
-                                    {link.linkType}
-                                </span>
-                                <span style={{ fontSize: 10, color: "var(--framer-color-text-tertiary)" }}>
-                                    {link.element}
-                                </span>
-                                <span style={{ fontSize: 10, color: "var(--framer-color-text-tertiary)" }}>
-                                    {link.responseTime}ms
-                                </span>
-                            </div>
-                            <div className="link-row-source">
-                                from: {link.sourceUrl}
-                            </div>
-                        </div>
-                    ))}
+                <div className="stack-sm" style={{ maxHeight: 350, overflowY: "auto" }}>
+                    <AnimatePresence>
+                        {links.slice(0, 100).map((link) => (
+                            <LinkRow key={link.id} link={link} onSelect={handleSelectLink} />
+                        ))}
+                    </AnimatePresence>
                     {links.length > 100 && (
                         <p style={{ textAlign: "center", fontSize: 10, color: "var(--framer-color-text-tertiary)" }}>
                             Showing first 100 results. Use filters to narrow down.
@@ -199,3 +214,5 @@ export default function ResultsList() {
         </div>
     )
 }
+
+export default ResultsList

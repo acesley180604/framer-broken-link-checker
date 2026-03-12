@@ -1,35 +1,44 @@
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useScanStore } from "@/store/scanStore"
-import { runScan, abortScan } from "@/utils/scanner"
+import { runScan, abortScan, pauseScan, resumeScan } from "@/utils/scanner"
 
-export default function ScanConfig() {
+export function ScanConfig() {
     const {
         scanConfig,
         setScanConfig,
         setProgress,
         setCurrentScan,
         addToHistory,
+        addLiveResult,
+        clearLiveResults,
         progress,
         showToast,
     } = useScanStore()
     const [showAdvanced, setShowAdvanced] = useState(false)
 
-    const handleStartScan = async () => {
+    const handleStartScan = useCallback(async () => {
         if (progress.scanning) {
             abortScan()
-            setProgress({ scanning: false, phase: "idle" })
+            setProgress({ scanning: false, paused: false, phase: "idle" })
             showToast("Scan cancelled", "info")
             return
         }
 
+        clearLiveResults()
         setProgress({
             scanning: true,
+            paused: false,
             currentPage: "",
             pagesScanned: 0,
             totalPages: 0,
             linksChecked: 0,
             estimatedTotalLinks: 0,
             phase: "crawling",
+            liveResults: [],
+            okCount: 0,
+            brokenCount: 0,
+            redirectCount: 0,
+            errorCount: 0,
         })
 
         await runScan(scanConfig, {
@@ -41,33 +50,45 @@ export default function ScanConfig() {
                     phase: "crawling",
                 })
             },
-            onLinkChecked: (_link, linkIndex, totalLinks) => {
+            onLinkChecked: (link, linkIndex, totalLinks) => {
                 setProgress({
                     linksChecked: linkIndex,
                     estimatedTotalLinks: totalLinks,
                     phase: "checking",
                 })
+                addLiveResult(link)
             },
             onComplete: (result) => {
                 setCurrentScan(result)
                 addToHistory(result)
                 setProgress({
                     scanning: false,
+                    paused: false,
                     phase: "complete",
                     pagesScanned: result.pagesScanned,
                     linksChecked: result.linksChecked,
                 })
                 showToast(
                     `Scan complete: ${result.linksChecked} links checked, ${result.broken} broken`,
-                    result.broken > 0 ? "error" : "success"
+                    result.broken > 0 ? "error" : "success",
                 )
             },
             onError: (error) => {
-                setProgress({ scanning: false, phase: "error" })
+                setProgress({ scanning: false, paused: false, phase: "error" })
                 showToast(error, "error")
             },
         })
-    }
+    }, [progress.scanning, scanConfig, setProgress, setCurrentScan, addToHistory, addLiveResult, clearLiveResults, showToast])
+
+    const handlePauseResume = useCallback(() => {
+        if (progress.paused) {
+            resumeScan()
+            setProgress({ paused: false, phase: "checking" })
+        } else {
+            pauseScan()
+            setProgress({ paused: true, phase: "paused" })
+        }
+    }, [progress.paused, setProgress])
 
     return (
         <div className="stack-lg">
@@ -141,6 +162,24 @@ export default function ScanConfig() {
                         <div className="toggle-knob" />
                     </div>
                 </div>
+                <div className="row-between">
+                    <span style={{ fontSize: 11 }}>Detect soft 404 errors</span>
+                    <div
+                        className={`toggle ${scanConfig.detectSoftErrors ? "on" : ""}`}
+                        onClick={() => setScanConfig({ detectSoftErrors: !scanConfig.detectSoftErrors })}
+                    >
+                        <div className="toggle-knob" />
+                    </div>
+                </div>
+                <div className="row-between">
+                    <span style={{ fontSize: 11 }}>Check SSL certificates</span>
+                    <div
+                        className={`toggle ${scanConfig.checkSsl ? "on" : ""}`}
+                        onClick={() => setScanConfig({ checkSsl: !scanConfig.checkSsl })}
+                    >
+                        <div className="toggle-knob" />
+                    </div>
+                </div>
             </div>
 
             {/* Advanced Settings Toggle */}
@@ -149,7 +188,14 @@ export default function ScanConfig() {
             </button>
 
             {showAdvanced && (
-                <div className="stack-sm" style={{ padding: "10px 12px", background: "var(--framer-color-bg-secondary)", borderRadius: 8 }}>
+                <div
+                    className="stack-sm"
+                    style={{
+                        padding: "10px 12px",
+                        background: "var(--framer-color-bg-secondary)",
+                        borderRadius: 8,
+                    }}
+                >
                     <div className="grid-2">
                         <div className="stack-sm">
                             <label>Max Depth</label>
@@ -174,6 +220,29 @@ export default function ScanConfig() {
                             />
                         </div>
                     </div>
+
+                    <div className="stack-sm">
+                        <label>CORS Proxy URL (for accurate external link checking)</label>
+                        <input
+                            type="url"
+                            placeholder="https://your-cors-proxy.example.com"
+                            value={scanConfig.proxyUrl}
+                            onChange={(e) => setScanConfig({ proxyUrl: e.target.value })}
+                            disabled={progress.scanning}
+                        />
+                    </div>
+
+                    <div className="stack-sm">
+                        <label>Google Safe Browsing API Key</label>
+                        <input
+                            type="password"
+                            placeholder="API key for malware detection"
+                            value={scanConfig.safeBrowsingApiKey}
+                            onChange={(e) => setScanConfig({ safeBrowsingApiKey: e.target.value })}
+                            disabled={progress.scanning}
+                        />
+                    </div>
+
                     <div className="row-between">
                         <span style={{ fontSize: 11 }}>Check scripts</span>
                         <div
@@ -213,22 +282,34 @@ export default function ScanConfig() {
                 </div>
             )}
 
-            {/* Start/Stop Button */}
-            <button
-                className={progress.scanning ? "btn-secondary w-full" : "framer-button-primary w-full"}
-                onClick={handleStartScan}
-                disabled={!scanConfig.siteUrl && !progress.scanning}
-                style={progress.scanning ? { borderColor: "#e53e3e", color: "#e53e3e" } : undefined}
-            >
-                {progress.scanning ? "Stop Scan" : "Start Scan"}
-            </button>
+            {/* Start/Stop/Pause Buttons */}
+            <div className="row gap-6">
+                <button
+                    className={progress.scanning ? "btn-secondary w-full" : "framer-button-primary w-full"}
+                    onClick={handleStartScan}
+                    disabled={!scanConfig.siteUrl && !progress.scanning}
+                    style={progress.scanning ? { borderColor: "#e53e3e", color: "#e53e3e" } : undefined}
+                >
+                    {progress.scanning ? "Stop Scan" : "Start Scan"}
+                </button>
+                {progress.scanning && (
+                    <button
+                        className="btn-secondary"
+                        onClick={handlePauseResume}
+                        style={{ minWidth: 80 }}
+                    >
+                        {progress.paused ? "Resume" : "Pause"}
+                    </button>
+                )}
+            </div>
 
             {/* Info */}
             <div className="info-box info-box-default">
                 <p style={{ fontSize: 10 }}>
-                    The scanner will crawl your site starting from the URL above, check all links
-                    found on each page, and report their status. Internal and external links are
-                    both checked by default.
+                    The scanner crawls your site starting from the URL above, fetches each page's
+                    HTML, extracts all links, and checks them with real HTTP requests. Internal links
+                    get full status codes; external links use HEAD requests with CORS fallback.
+                    {scanConfig.proxyUrl && " A CORS proxy is configured for accurate external checking."}
                 </p>
             </div>
         </div>

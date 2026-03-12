@@ -1,5 +1,6 @@
 {
-  "id": "broken-link-checker",
+  "id": "f0d501",
   "name": "Broken Link Checker",
-  "modes": ["canvas"]
+  "modes": ["canvas"],
+  "icon": "/icon.svg"
 }
