@@ -139,7 +139,11 @@ export function ScanConfig() {
                     <span style={{ fontSize: 11 }}>Check external links</span>
                     <div
                         className={`toggle ${scanConfig.checkExternalLinks ? "on" : ""}`}
+                        role="switch"
+                        aria-checked={scanConfig.checkExternalLinks}
+                        tabIndex={0}
                         onClick={() => setScanConfig({ checkExternalLinks: !scanConfig.checkExternalLinks })}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setScanConfig({ checkExternalLinks: !scanConfig.checkExternalLinks }) } }}
                     >
                         <div className="toggle-knob" />
                     </div>

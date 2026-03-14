@@ -34,6 +34,8 @@ interface BlcResult {
 }
 
 ;(function () {
+    if ((window as unknown as Record<string, unknown>).__blcLoaded) return
+    ;(window as unknown as Record<string, unknown>).__blcLoaded = true
     const PREFIX = "[BLC]"
     const DEFAULT_TIMEOUT = 10000
     const DEFAULT_INTERVAL = 86400000 // 24 hours

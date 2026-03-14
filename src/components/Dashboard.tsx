@@ -28,14 +28,18 @@ export function Dashboard() {
         const target = currentScan.healthScore
         const duration = 1000
         const start = performance.now()
+        let rafId: number
+        let cancelled = false
         const animate = (time: number) => {
+            if (cancelled) return
             const elapsed = time - start
             const progress = Math.min(elapsed / duration, 1)
             const eased = 1 - Math.pow(1 - progress, 3) // ease-out cubic
             setAnimatedScore(Math.round(eased * target))
-            if (progress < 1) requestAnimationFrame(animate)
+            if (progress < 1) rafId = requestAnimationFrame(animate)
         }
-        requestAnimationFrame(animate)
+        rafId = requestAnimationFrame(animate)
+        return () => { cancelled = true; cancelAnimationFrame(rafId) }
     }, [currentScan])
 
     // Group by status code

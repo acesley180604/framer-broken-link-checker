@@ -165,17 +165,52 @@ export function ResultsList() {
 
     const handleCopyRedirect = useCallback(
         (link: LinkResult) => {
+            const copyText = (text: string) => {
+                try {
+                    navigator.clipboard.writeText(text).then(
+                        () => showToast(`Copied redirect rule: ${text}`, "success"),
+                        () => {
+                            // Textarea fallback for Safari
+                            const ta = document.createElement("textarea")
+                            ta.value = text
+                            ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;"
+                            document.body.appendChild(ta)
+                            ta.select()
+                            try {
+                                document.execCommand("copy")
+                                showToast(`Copied redirect rule: ${text}`, "success")
+                            } catch {
+                                showToast("Failed to copy to clipboard", "error")
+                            }
+                            document.body.removeChild(ta)
+                        },
+                    )
+                } catch {
+                    // Textarea fallback for Safari
+                    const ta = document.createElement("textarea")
+                    ta.value = text
+                    ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;"
+                    document.body.appendChild(ta)
+                    ta.select()
+                    try {
+                        document.execCommand("copy")
+                        showToast(`Copied redirect rule: ${text}`, "success")
+                    } catch {
+                        showToast("Failed to copy to clipboard", "error")
+                    }
+                    document.body.removeChild(ta)
+                }
+            }
+
             try {
                 const targetUrl = new URL(link.targetUrl)
                 const replacement = link.replacementUrl || targetUrl.origin + "/"
                 const rule = `${targetUrl.pathname} -> ${replacement}`
-                navigator.clipboard.writeText(rule)
-                showToast(`Copied redirect rule: ${rule}`, "success")
+                copyText(rule)
             } catch {
                 const replacement = link.replacementUrl || "/"
                 const rule = `${link.targetUrl} -> ${replacement}`
-                navigator.clipboard.writeText(rule)
-                showToast(`Copied redirect rule`, "success")
+                copyText(rule)
             }
         },
         [showToast],

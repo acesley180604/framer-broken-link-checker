@@ -400,8 +400,9 @@ export const useScanStore = create<ScanState>((set, get) => ({
         const { currentScan, showToast } = get()
         if (!currentScan) return
 
-        const linkIndex = currentScan.links.findIndex((l) => l.targetUrl === url)
-        if (linkIndex === -1) return
+        const link = currentScan.links.find((l) => l.targetUrl === url)
+        if (!link) return
+        const linkId = link.id
 
         try {
             const startTime = performance.now()
@@ -417,7 +418,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
                 const response = await fetch(url, {
                     method: "HEAD",
                     signal: controller.signal,
-                    redirect: "follow",
+                    redirect: "manual",
                 })
                 clearTimeout(timeoutId)
                 responseTime = Math.round(performance.now() - startTime)
@@ -448,7 +449,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
             set((state) => {
                 if (!state.currentScan) return state
                 const updatedLinks = state.currentScan.links.map((l) =>
-                    l.targetUrl === url
+                    l.id === linkId
                         ? {
                               ...l,
                               statusCode,
@@ -466,6 +467,22 @@ export const useScanStore = create<ScanState>((set, get) => ({
 
             showToast(`Rechecked ${url}: ${status}`, status === "ok" ? "success" : "info")
         } catch {
+            // Update link status to "error" on unexpected failure
+            set((state) => {
+                if (!state.currentScan) return state
+                const updatedLinks = state.currentScan.links.map((l) =>
+                    l.id === linkId
+                        ? {
+                              ...l,
+                              status: "error" as LinkStatus,
+                              checkedAt: new Date().toISOString(),
+                          }
+                        : l,
+                )
+                return {
+                    currentScan: { ...state.currentScan, links: updatedLinks },
+                }
+            })
             showToast(`Failed to recheck ${url}`, "error")
         }
     },

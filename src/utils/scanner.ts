@@ -579,5 +579,5 @@ export function getSimilarUrls(brokenUrl: string, allUrls: string[]): string[] {
 }
 
 export function getWaybackUrl(url: string): string {
-    return `https://web.archive.org/web/*/${encodeURIComponent(url)}`
+    return `https://web.archive.org/web/*/${url}`
 }

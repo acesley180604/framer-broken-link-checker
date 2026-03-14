@@ -17,21 +17,28 @@ export function LinkEditor({ link }: LinkEditorProps) {
     }, [newUrl, link.id, setReplacementUrl, showToast])
 
     const handleCopyRedirectRule = useCallback(() => {
+        let pathname: string
+        try {
+            pathname = new URL(link.targetUrl).pathname
+        } catch {
+            pathname = link.targetUrl
+        }
         // Generate redirect rule formats
         const rules = [
             `# Nginx redirect rule`,
-            `rewrite ^${new URL(link.targetUrl).pathname}$ ${newUrl || "[NEW_URL]"} permanent;`,
+            `rewrite ^${pathname}$ ${newUrl || "[NEW_URL]"} permanent;`,
             ``,
             `# Apache .htaccess redirect rule`,
-            `Redirect 301 ${new URL(link.targetUrl).pathname} ${newUrl || "[NEW_URL]"}`,
+            `Redirect 301 ${pathname} ${newUrl || "[NEW_URL]"}`,
             ``,
             `# Framer custom code (meta refresh)`,
             `<meta http-equiv="refresh" content="0;url=${newUrl || "[NEW_URL]"}" />`,
         ].join("\n")
 
-        void navigator.clipboard.writeText(rules).then(() => {
-            showToast("Redirect rules copied", "success")
-        })
+        void navigator.clipboard.writeText(rules).then(
+            () => showToast("Redirect rules copied", "success"),
+            () => showToast("Failed to copy to clipboard", "error"),
+        )
     }, [link.targetUrl, newUrl, showToast])
 
     return (

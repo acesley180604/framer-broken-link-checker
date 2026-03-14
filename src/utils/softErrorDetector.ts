@@ -12,10 +12,11 @@ const ERROR_TITLE_PATTERNS = [
     /404/i,
     /not\s*found/i,
     /page\s*not\s*found/i,
-    /error/i,
+    /^error$/i,
+    /error\s*\d{3}/i,
     /does\s*not\s*exist/i,
     /no\s*longer\s*available/i,
-    /removed/i,
+    /page\s*removed/i,
     /moved\s*permanently/i,
 ]
 
