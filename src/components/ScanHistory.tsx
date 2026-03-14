@@ -1,7 +1,14 @@
+import { useMemo } from "react"
+import { motion } from "motion/react"
 import { useScanStore } from "@/store/scanStore"
 
-export default function ScanHistory() {
+export function ScanHistory() {
     const { scanHistory, setCurrentScan, clearHistory } = useScanStore()
+
+    const trendScans = useMemo(
+        () => [...scanHistory].reverse().slice(-10),
+        [scanHistory],
+    )
 
     if (scanHistory.length === 0) {
         return (
@@ -14,9 +21,6 @@ export default function ScanHistory() {
         )
     }
 
-    // Health score trend (last 5 scans, reversed for chronological order)
-    const trendScans = [...scanHistory].reverse().slice(-10)
-    const maxScore = 100
     const barHeight = 60
 
     return (
@@ -35,13 +39,14 @@ export default function ScanHistory() {
                             height: barHeight + 30,
                         }}
                     >
-                        {trendScans.map((scan) => {
-                            const height = (scan.healthScore / maxScore) * barHeight
-                            const color = scan.healthScore >= 90
-                                ? "#38a169"
-                                : scan.healthScore >= 70
-                                    ? "#d69e2e"
-                                    : "#e53e3e"
+                        {trendScans.map((scan, index) => {
+                            const height = (scan.healthScore / 100) * barHeight
+                            const color =
+                                scan.healthScore >= 90
+                                    ? "#38a169"
+                                    : scan.healthScore >= 70
+                                      ? "#d69e2e"
+                                      : "#e53e3e"
                             return (
                                 <div
                                     key={scan.id}
@@ -56,18 +61,22 @@ export default function ScanHistory() {
                                     <span style={{ fontSize: 9, fontWeight: 600, color }}>
                                         {scan.healthScore}%
                                     </span>
-                                    <div
+                                    <motion.div
+                                        initial={{ height: 0 }}
+                                        animate={{ height }}
+                                        transition={{ duration: 0.5, delay: index * 0.05 }}
                                         style={{
                                             width: "100%",
                                             maxWidth: 30,
-                                            height,
                                             background: color,
                                             borderRadius: 3,
-                                            transition: "height 0.3s",
                                         }}
                                     />
                                     <span style={{ fontSize: 8, color: "var(--framer-color-text-tertiary)" }}>
-                                        {new Date(scan.completedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                                        {new Date(scan.completedAt).toLocaleDateString(undefined, {
+                                            month: "short",
+                                            day: "numeric",
+                                        })}
                                     </span>
                                 </div>
                             )
@@ -98,11 +107,12 @@ export default function ScanHistory() {
                         </thead>
                         <tbody>
                             {scanHistory.map((scan) => {
-                                const healthColor = scan.healthScore >= 90
-                                    ? "#38a169"
-                                    : scan.healthScore >= 70
-                                        ? "#d69e2e"
-                                        : "#e53e3e"
+                                const healthColor =
+                                    scan.healthScore >= 90
+                                        ? "#38a169"
+                                        : scan.healthScore >= 70
+                                          ? "#d69e2e"
+                                          : "#e53e3e"
 
                                 return (
                                     <tr key={scan.id}>
@@ -115,10 +125,7 @@ export default function ScanHistory() {
                                         <td className="text-right">{scan.linksChecked}</td>
                                         <td className="text-right text-red">{scan.broken}</td>
                                         <td className="text-right">
-                                            <button
-                                                className="btn-link"
-                                                onClick={() => setCurrentScan(scan)}
-                                            >
+                                            <button className="btn-link" onClick={() => setCurrentScan(scan)}>
                                                 View
                                             </button>
                                         </td>
@@ -149,10 +156,16 @@ export default function ScanHistory() {
                                         <div
                                             className="stat-value"
                                             style={{
-                                                color: healthDiff > 0 ? "#38a169" : healthDiff < 0 ? "#e53e3e" : "var(--framer-color-text)",
+                                                color:
+                                                    healthDiff > 0
+                                                        ? "#38a169"
+                                                        : healthDiff < 0
+                                                          ? "#e53e3e"
+                                                          : "var(--framer-color-text)",
                                             }}
                                         >
-                                            {healthDiff > 0 ? "+" : ""}{healthDiff}%
+                                            {healthDiff > 0 ? "+" : ""}
+                                            {healthDiff}%
                                         </div>
                                     </div>
                                     <div className="stat-card">
@@ -160,21 +173,34 @@ export default function ScanHistory() {
                                         <div
                                             className="stat-value"
                                             style={{
-                                                color: brokenDiff < 0 ? "#38a169" : brokenDiff > 0 ? "#e53e3e" : "var(--framer-color-text)",
+                                                color:
+                                                    brokenDiff < 0
+                                                        ? "#38a169"
+                                                        : brokenDiff > 0
+                                                          ? "#e53e3e"
+                                                          : "var(--framer-color-text)",
                                             }}
                                         >
-                                            {brokenDiff > 0 ? "+" : ""}{brokenDiff}
+                                            {brokenDiff > 0 ? "+" : ""}
+                                            {brokenDiff}
                                         </div>
                                     </div>
                                     <div className="stat-card">
                                         <div className="stat-label">Links Change</div>
                                         <div className="stat-value">
-                                            {linksDiff > 0 ? "+" : ""}{linksDiff}
+                                            {linksDiff > 0 ? "+" : ""}
+                                            {linksDiff}
                                         </div>
                                     </div>
                                     <div className="stat-card">
                                         <div className="stat-label">Previous Scan</div>
-                                        <div style={{ fontSize: 10, marginTop: 2, color: "var(--framer-color-text-secondary)" }}>
+                                        <div
+                                            style={{
+                                                fontSize: 10,
+                                                marginTop: 2,
+                                                color: "var(--framer-color-text-secondary)",
+                                            }}
+                                        >
                                             {new Date(previous.completedAt).toLocaleDateString()}
                                         </div>
                                     </div>
@@ -187,3 +213,5 @@ export default function ScanHistory() {
         </div>
     )
 }
+
+export default ScanHistory

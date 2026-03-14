@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { motion } from "motion/react"
 
 interface ToastProps {
     message: string
@@ -7,7 +8,7 @@ interface ToastProps {
     duration?: number
 }
 
-export default function Toast({ message, type, onDismiss, duration = 5000 }: ToastProps) {
+export function Toast({ message, type, onDismiss, duration = 5000 }: ToastProps) {
     useEffect(() => {
         const timer = setTimeout(onDismiss, duration)
         return () => clearTimeout(timer)
@@ -15,10 +16,20 @@ export default function Toast({ message, type, onDismiss, duration = 5000 }: Toa
 
     return (
         <div className="toast-container">
-            <div className={`toast toast-${type}`}>
+            <motion.div
+                initial={{ opacity: 0, y: 12, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className={`toast toast-${type}`}
+            >
                 <p style={{ flex: 1, color: "inherit" }}>{message}</p>
-                <button onClick={onDismiss} aria-label="Dismiss">x</button>
-            </div>
+                <button onClick={onDismiss} aria-label="Dismiss">
+                    x
+                </button>
+            </motion.div>
         </div>
     )
 }
+
+export default Toast

@@ -1,4 +1,4 @@
-import { useMemo, memo, useCallback } from "react"
+import { useMemo, memo, useCallback, useState } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { useScanStore, type LinkResult } from "@/store/scanStore"
 import { getStatusColor, getStatusLabel } from "@/utils/statusCodes"
@@ -6,10 +6,30 @@ import { getStatusColor, getStatusLabel } from "@/utils/statusCodes"
 const LinkRow = memo(function LinkRow({
     link,
     onSelect,
+    onRecheck,
+    onCopyRedirect,
 }: {
     link: LinkResult
     onSelect: (id: string) => void
+    onRecheck: (url: string) => void
+    onCopyRedirect: (link: LinkResult) => void
 }) {
+    const [rechecking, setRechecking] = useState(false)
+
+    const handleRecheck = async (e: React.MouseEvent) => {
+        e.stopPropagation()
+        setRechecking(true)
+        await onRecheck(link.targetUrl)
+        setRechecking(false)
+    }
+
+    const handleCopyRedirect = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        onCopyRedirect(link)
+    }
+
+    const isBroken = link.status === "broken" || link.status === "soft404" || link.status === "error" || link.status === "timeout"
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 4 }}
@@ -20,9 +40,71 @@ const LinkRow = memo(function LinkRow({
         >
             <div className="row-between">
                 <div className="link-row-url">{link.targetUrl}</div>
-                <span className={`badge badge-${link.status === "soft404" ? "broken" : link.status}`} style={{ flexShrink: 0 }}>
-                    {link.statusCode ?? link.status}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    <button
+                        onClick={handleRecheck}
+                        disabled={rechecking}
+                        title="Recheck this link"
+                        style={{
+                            background: "none",
+                            border: "none",
+                            cursor: rechecking ? "wait" : "pointer",
+                            padding: 2,
+                            opacity: rechecking ? 0.5 : 0.7,
+                            display: "flex",
+                            alignItems: "center",
+                        }}
+                    >
+                        <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            style={{ animation: rechecking ? "spin 1s linear infinite" : "none" }}
+                        >
+                            <polyline points="23 4 23 10 17 10" />
+                            <polyline points="1 20 1 14 7 14" />
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                        </svg>
+                    </button>
+                    {isBroken && (
+                        <button
+                            onClick={handleCopyRedirect}
+                            title="Copy redirect rule to clipboard"
+                            style={{
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                padding: 2,
+                                opacity: 0.7,
+                                display: "flex",
+                                alignItems: "center",
+                            }}
+                        >
+                            <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                            </svg>
+                        </button>
+                    )}
+                    <span className={`badge badge-${link.status === "soft404" ? "broken" : link.status}`} style={{ flexShrink: 0 }}>
+                        {link.statusCode ?? link.status}
+                    </span>
+                </div>
             </div>
             <div className="link-row-meta">
                 <span style={{ fontSize: 10, color: getStatusColor(link.status), fontWeight: 600 }}>
@@ -65,11 +147,38 @@ export function ResultsList() {
         selectLink,
         uniquePages,
         statusCounts,
+        recheckLink,
+        showToast,
     } = useScanStore()
 
     const handleSelectLink = useCallback(
         (id: string) => selectLink(id),
         [selectLink],
+    )
+
+    const handleRecheck = useCallback(
+        async (url: string) => {
+            await recheckLink(url)
+        },
+        [recheckLink],
+    )
+
+    const handleCopyRedirect = useCallback(
+        (link: LinkResult) => {
+            try {
+                const targetUrl = new URL(link.targetUrl)
+                const replacement = link.replacementUrl || targetUrl.origin + "/"
+                const rule = `${targetUrl.pathname} -> ${replacement}`
+                navigator.clipboard.writeText(rule)
+                showToast(`Copied redirect rule: ${rule}`, "success")
+            } catch {
+                const replacement = link.replacementUrl || "/"
+                const rule = `${link.targetUrl} -> ${replacement}`
+                navigator.clipboard.writeText(rule)
+                showToast(`Copied redirect rule`, "success")
+            }
+        },
+        [showToast],
     )
 
     const links = useMemo(() => filteredLinks(), [filteredLinks])
@@ -201,7 +310,7 @@ export function ResultsList() {
                 <div className="stack-sm" style={{ maxHeight: 350, overflowY: "auto" }}>
                     <AnimatePresence>
                         {links.slice(0, 100).map((link) => (
-                            <LinkRow key={link.id} link={link} onSelect={handleSelectLink} />
+                            <LinkRow key={link.id} link={link} onSelect={handleSelectLink} onRecheck={handleRecheck} onCopyRedirect={handleCopyRedirect} />
                         ))}
                     </AnimatePresence>
                     {links.length > 100 && (

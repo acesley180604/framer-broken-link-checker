@@ -1,10 +1,10 @@
+import { useCallback } from "react"
 import { useScanStore } from "@/store/scanStore"
 
-export default function ScheduleConfig() {
+export function ScheduleConfig() {
     const { scheduleConfig, setScheduleConfig, showToast } = useScanStore()
 
-    const handleSave = () => {
-        // Calculate next run
+    const handleSave = useCallback(() => {
         const now = new Date()
         let nextRun: Date
 
@@ -24,7 +24,7 @@ export default function ScheduleConfig() {
             nextRun: scheduleConfig.enabled ? nextRun.toISOString() : null,
         })
         showToast("Schedule saved", "success")
-    }
+    }, [scheduleConfig.frequency, scheduleConfig.enabled, setScheduleConfig, showToast])
 
     return (
         <div className="stack-lg">
@@ -74,7 +74,9 @@ export default function ScheduleConfig() {
                         <span style={{ fontSize: 11 }}>Only notify on new broken links</span>
                         <div
                             className={`toggle ${scheduleConfig.notifyOnBrokenOnly ? "on" : ""}`}
-                            onClick={() => setScheduleConfig({ notifyOnBrokenOnly: !scheduleConfig.notifyOnBrokenOnly })}
+                            onClick={() =>
+                                setScheduleConfig({ notifyOnBrokenOnly: !scheduleConfig.notifyOnBrokenOnly })
+                            }
                         >
                             <div className="toggle-knob" />
                         </div>
@@ -106,12 +108,14 @@ export default function ScheduleConfig() {
             {!scheduleConfig.enabled && (
                 <div className="info-box info-box-default">
                     <p style={{ fontSize: 10, margin: 0 }}>
-                        Enable scheduled scans to automatically monitor your site for broken links.
-                        You'll receive email notifications when new broken links are found.
-                        Requires the embed script to be installed on your site.
+                        Enable scheduled scans to automatically monitor your site for broken links. You'll
+                        receive email notifications when new broken links are found. Requires the embed
+                        script to be installed on your site.
                     </p>
                 </div>
             )}
         </div>
     )
 }
+
+export default ScheduleConfig

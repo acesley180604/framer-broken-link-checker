@@ -2,6 +2,11 @@
     box-sizing: border-box;
 }
 
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 body {
     margin: 0;
     font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -333,6 +338,21 @@ hr {
     color: #553c9a;
 }
 
+.badge-ssl-error {
+    background: #feebc8;
+    color: #c05621;
+}
+
+.badge-mixed-content {
+    background: #feebc8;
+    color: #c05621;
+}
+
+.badge-soft404 {
+    background: #fed7d7;
+    color: #9b2c2c;
+}
+
 .badge-active {
     background: #c6f6d5;
     color: #276749;
@@ -571,7 +591,6 @@ hr {
     height: 100%;
     border-radius: 3px;
     background: var(--framer-color-tint);
-    transition: width 0.3s ease;
 }
 
 /* -- Health Score Ring ----------------------------------------------------- */
@@ -621,7 +640,6 @@ hr {
     bottom: 12px;
     right: 12px;
     z-index: 100;
-    animation: toast-slide-up 0.3s ease-out;
 }
 
 .toast {
@@ -658,11 +676,6 @@ hr {
 
 .toast button:hover {
     color: #fff;
-}
-
-@keyframes toast-slide-up {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* -- Misc ------------------------------------------------------------------ */
@@ -750,6 +763,16 @@ footer {
     align-items: center;
     gap: 6px;
     margin-top: 4px;
+}
+
+/* -- Live Result Item (scan progress) -------------------------------------- */
+
+.live-result-item {
+    padding: 4px 8px;
+    border-left: 3px solid var(--framer-color-divider);
+    border-radius: 0 4px 4px 0;
+    background: var(--framer-color-bg-secondary);
+    transition: border-color 0.15s;
 }
 
 /* -- Code Block ------------------------------------------------------------ */

@@ -137,6 +137,9 @@ interface ScanState {
     setSearchQuery: (query: string) => void
     resetFilters: () => void
 
+    // Recheck
+    recheckLink: (url: string) => Promise<void>
+
     // UI
     clearError: () => void
     showToast: (message: string, type: "error" | "success" | "info") => void
@@ -390,6 +393,81 @@ export const useScanStore = create<ScanState>((set, get) => ({
                 currentScan: { ...state.currentScan, links: updatedLinks },
             }
         })
+    },
+
+    // Recheck a single link
+    recheckLink: async (url: string) => {
+        const { currentScan, showToast } = get()
+        if (!currentScan) return
+
+        const linkIndex = currentScan.links.findIndex((l) => l.targetUrl === url)
+        if (linkIndex === -1) return
+
+        try {
+            const startTime = performance.now()
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+            let statusCode: number | null = null
+            let status: LinkStatus = "error"
+            let redirectTo: string | undefined
+            let responseTime = 0
+
+            try {
+                const response = await fetch(url, {
+                    method: "HEAD",
+                    signal: controller.signal,
+                    redirect: "follow",
+                })
+                clearTimeout(timeoutId)
+                responseTime = Math.round(performance.now() - startTime)
+                statusCode = response.status
+
+                if (response.ok) {
+                    status = "ok"
+                } else if (statusCode >= 300 && statusCode < 400) {
+                    status = "redirect"
+                    redirectTo = response.headers.get("location") || undefined
+                } else if (statusCode === 404) {
+                    status = "broken"
+                } else if (statusCode >= 500) {
+                    status = "error"
+                } else {
+                    status = "broken"
+                }
+            } catch (fetchError: unknown) {
+                clearTimeout(timeoutId)
+                responseTime = Math.round(performance.now() - startTime)
+                if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
+                    status = "timeout"
+                } else {
+                    status = "error"
+                }
+            }
+
+            set((state) => {
+                if (!state.currentScan) return state
+                const updatedLinks = state.currentScan.links.map((l) =>
+                    l.targetUrl === url
+                        ? {
+                              ...l,
+                              statusCode,
+                              status,
+                              redirectTo,
+                              responseTime,
+                              checkedAt: new Date().toISOString(),
+                          }
+                        : l,
+                )
+                return {
+                    currentScan: { ...state.currentScan, links: updatedLinks },
+                }
+            })
+
+            showToast(`Rechecked ${url}: ${status}`, status === "ok" ? "success" : "info")
+        } catch {
+            showToast(`Failed to recheck ${url}`, "error")
+        }
     },
 
     // Filters
