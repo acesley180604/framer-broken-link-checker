@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react"
+import { LicenseGate } from "@shared/index"
 import { AnimatePresence, motion } from "motion/react"
 import { useScanStore } from "./store/scanStore"
 import { ScanConfig } from "./components/ScanConfig"
@@ -33,6 +34,7 @@ export function App() {
     }, [])
 
     return (
+        <LicenseGate pluginSlug="broken-link-checker">
         <section>
             <header
                 className="row-between"
@@ -109,5 +111,6 @@ export function App() {
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
             <footer>Free plan: 3 scans/mo. Pro $9/mo | Team $19/mo | Agency $39/mo</footer>
         </section>
+        </LicenseGate>
     )
 }
